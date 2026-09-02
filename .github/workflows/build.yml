@@ -1,0 +1,33 @@
+name: build
+on:
+  workflow_dispatch:
+    inputs:
+      gl_version:
+        description: gl version to build
+        default: 9.0.0-rc.10
+        required: true
+
+jobs:
+  linux-x64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build gl from source
+        run: |
+          sudo apt-get install -y -q build-essential python3 libxi-dev libglu1-mesa-dev pkg-config
+          npm install --foreground-scripts --no-audit --no-fund gl@${{ inputs.gl_version }}
+      - name: Pack prebuild tarball
+        run: |
+          abi=$(node -p process.versions.modules)
+          cd node_modules/gl
+          # runtime artifacts only: the addon plus ANGLE's shared libraries
+          find build/Release -maxdepth 1 \( -name '*.node' -o -name '*.so*' -o -name '*.dylib' \) \
+            | tar czf "$RUNNER_TEMP/gl-v${{ inputs.gl_version }}-node-v$abi-linux-x64.tar.gz" -T -
+          tar tzf "$RUNNER_TEMP/gl-v${{ inputs.gl_version }}-node-v$abi-linux-x64.tar.gz"
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v${{ inputs.gl_version }}" "$RUNNER_TEMP"/gl-*.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
